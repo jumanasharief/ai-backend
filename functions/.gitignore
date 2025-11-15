@@ -1,0 +1,7 @@
+node_modules
+.npmrc
+.cache
+lib
+.env.local
+.runtimeconfig.json
+
