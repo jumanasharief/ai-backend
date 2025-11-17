@@ -44,42 +44,48 @@ function ExerciseMenu() {
       name: 'Squat',
       image: squatImg,
       calories: `~${calculateCalories('squat')} cal`,
-      description: 'Lower body strength'
+      targets: 'Quads, Glutes, Hamstrings',
+      equipment: 'None (bodyweight)'
     },
     {
       id: 'crunch',
       name: 'Crunch',
       image: crunchImg,
       calories: `~${calculateCalories('crunch')} cal`,
-      description: 'Core isolation'
+      targets: 'Abs, Core',
+      equipment: 'Mat recommended'
     },
     {
       id: 'bicep-curl',
       name: 'Bicep Curl',
       image: bicepCurlImg,
       calories: `~${calculateCalories('bicep-curl')} cal`,
-      description: 'Upper arm strength'
+      targets: 'Biceps, Forearms',
+      equipment: 'Dumbbells'
     },
     {
       id: 'front-kick',
       name: 'Front Kick',
       image: frontKickImg,
       calories: `~${calculateCalories('front-kick')} cal`,
-      description: 'Martial arts cardio'
+      targets: 'Quads, Hip Flexors, Core',
+      equipment: 'None (bodyweight)'
     },
     {
       id: 'overhead-press',
       name: 'Overhead Press',
       image: overheadPressImg,
       calories: `~${calculateCalories('overhead-press')} cal`,
-      description: 'Shoulder strength'
+      targets: 'Shoulders, Triceps',
+      equipment: 'Dumbbells'
     },
     {
       id: 'lateral-raise',
       name: 'Lateral Raise',
       image: lateralRaiseImg,
       calories: `~${calculateCalories('lateral-raise')} cal`,
-      description: 'Shoulder isolation'
+      targets: 'Lateral Deltoids',
+      equipment: 'Dumbbells'
     }
   ];
 
@@ -107,6 +113,12 @@ function ExerciseMenu() {
             <div className="exercise-info">
               <h3 className="exercise-name">{exercise.name}</h3>
               <p className="exercise-calories">{exercise.calories}</p>
+              <p className="exercise-targets">
+                <span className="exercise-label">Targets:</span> {exercise.targets}
+              </p>
+              <p className="exercise-equipment">
+                <span className="exercise-label">Equipment:</span> {exercise.equipment}
+              </p>
             </div>
           </div>
         ))}

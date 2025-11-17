@@ -22,6 +22,9 @@ export default function PoseCamera() {
   const videoFileRef = useRef(state?.videoFile);
   const isVideoMode = !!videoFileRef.current;
   
+  // keep a single detector instance
+  const detectorRef = useRef(null);
+
   // show a countdown before starting detection
   const [countdown, setCountdown] = useState(10);
   const [workoutStarted, setWorkoutStarted] = useState(false);
@@ -33,17 +36,12 @@ export default function PoseCamera() {
   const restDetectionRef = useRef({ frameCount: 0, lastMovement: 0 });
 
   const { currentExercise, addFeedback, clearFeedback, feedbackMessages, updateRepCount, startTimer } = useWorkout();
-  const detectorRef = useRef(null);
-
-  useEffect(() => {
-    if (!detectorRef.current) {
-      detectorRef.current = new ExerciseDetector(addFeedback);
-    }
-    return () => {
-      detectorRef.current = null;
-    };
-  }, [addFeedback]);
   const currentExerciseRef = useRef(currentExercise);
+
+  // Initialize detector once
+  if (!detectorRef.current) {
+    detectorRef.current = new ExerciseDetector(addFeedback);
+  }
 
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);

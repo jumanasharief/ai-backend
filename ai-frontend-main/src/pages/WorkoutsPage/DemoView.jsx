@@ -7,6 +7,18 @@ function DemoView() {
   const level = state?.level || 'beginner';
   const exercise = state?.exercise || 'squat';
   
+  // YouTube video IDs for each exercise
+  const exerciseVideos = {
+    'squat': '2t3Ab7a2ZM4',
+    'bicep-curl': 'uO_CNYidOw0',
+    'front-kick': 'o5wZm9U-hgQ',
+    'lateral-raise': 'kDqklk1ZESo',
+    'crunch': '0t4t3IpiEao',
+    'overhead-press': 'B-aVuyhvLHU'
+  };
+  
+  const videoId = exerciseVideos[exercise] || exerciseVideos['squat'];
+  
   // TEMP: Video upload feature for model testing
   const [videoFile, setVideoFile] = useState(null);
   const fileInputRef = useRef(null);
@@ -32,7 +44,16 @@ function DemoView() {
     <div className="goals-container text-center">
       <h2>Demo: {exercise.replace('-', ' ')}</h2>
       <p>Level: {level}</p>
-      <div className="video-placeholder" aria-label="Demo video placeholder">Demo video will be added here</div>
+      
+      <div className="video-container">
+        <iframe
+          src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+          title={`${exercise} demonstration`}
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        ></iframe>
+      </div>
       
       {/* TEMP: Video upload feature for model testing */}
       <input

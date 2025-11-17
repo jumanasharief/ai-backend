@@ -1,27 +1,33 @@
 import React from 'react';
 import { useUser } from '../../context/UserContext';
+import { useToast } from '../../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
 
 const Logout = () => {
   const { logout } = useUser();
+  const { showConfirm, showSuccess } = useToast();
   const navigate = useNavigate();
 
   // Handle logout
   // Clears user data and navigates to sign in page
   const handleLogout = () => {
     // Show confirmation dialog
-    const confirmLogout = window.confirm('Are you sure you want to logout?');
-    
-    if (confirmLogout) {
-      // Clear user data and localStorage
-      logout();
-      
-      // Navigate to sign in page
-      navigate('/');
-      
-      // Show success message
-      alert('You have been logged out successfully');
-    }
+    showConfirm(
+      'Are you sure you want to logout?',
+      () => {
+        // Clear user data and localStorage
+        logout();
+        
+        // Show success message
+        showSuccess('You have been logged out successfully');
+        
+        // Navigate to sign in page
+        navigate('/');
+      },
+      () => {
+        // User cancelled, do nothing
+      }
+    );
   };
 
   return (

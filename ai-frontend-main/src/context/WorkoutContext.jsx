@@ -1,16 +1,7 @@
-import React, { createContext, useContext, useMemo, useRef, useState, useCallback } from 'react';
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  getDocs,
-  serverTimestamp
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import React, { createContext, useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { useUser } from './UserContext';
+import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const WorkoutContext = createContext(null);
 
@@ -28,31 +19,19 @@ const levelToDurationMinutes = {
 
 export const WorkoutProvider = ({ children }) => {
   const { user, isAuthenticated } = useUser();
-
-  // Session state
+  
+  // track selected exercise, level, and planned duration
   const [currentExercise, setCurrentExercise] = useState(null);
   const [level, setLevel] = useState(null);
   const [duration, setDuration] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [startTime, setStartTime] = useState(null);
+  // track live workout metrics
   const [reps, setReps] = useState(0);
   const [calories, setCalories] = useState(0);
-  const [poseAccuracy, setPoseAccuracy] = useState(0);
-  const [feedbackMessages, setFeedbackMessages] = useState([]);
-  const [repCounts, setRepCounts] = useState({
-    squat: 0,
-    bicepCurl: 0,
-    frontKick: 0,
-    overheadPress: 0,
-    lateralRaise: 0,
-    crunch: 0
-  });
-  const [feedbackCounts, setFeedbackCounts] = useState({ positive: 0, negative: 0 });
-  const [workoutHistory, setWorkoutHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-
+  // keep timer reference for calories
   const calorieTimerRef = useRef(null);
-
+  // map seconds per calorie for each exercise
   const SECONDS_PER_CALORIE = {
     'squat': 8,
     'bicep-curl': 16,
@@ -62,15 +41,97 @@ export const WorkoutProvider = ({ children }) => {
     'crunch': 16.2,
   };
 
-  // Refs for latest values
+  const [poseAccuracy, setPoseAccuracy] = useState(0);
+  const [feedbackMessages, setFeedbackMessages] = useState([]);
+  const [repCounts, setRepCounts] = useState({ squat: 0, bicepCurl: 0, frontKick: 0, overheadPress: 0, lateralRaise: 0, crunch: 0 });
+  const [feedbackCounts, setFeedbackCounts] = useState({ positive: 0, negative: 0 });
+
+  // Initialize workout history from localStorage (fallback)
+  const [workoutHistory, setWorkoutHistory] = useState(() => {
+    const savedHistory = localStorage.getItem('workoutHistory');
+    if (savedHistory) {
+      try {
+        return JSON.parse(savedHistory);
+      } catch (error) {
+        console.error('Error parsing saved workout history:', error);
+        return [];
+      }
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Load workout history from Firestore when user is authenticated
+  useEffect(() => {
+    if (!isAuthenticated || !user?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const uid = user.uid;
+
+    // Listen to workout history from Firestore
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, 'workouts'),
+        where('userId', '==', uid),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      ),
+      (snapshot) => {
+        const history = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            exercise: data.exercise || 'Unknown',
+            date: data.workoutDate?.toDate()?.toISOString() || data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+            duration: data.durationMs || 0,
+            reps: data.reps || 0,
+            calories: data.calories || 0,
+            accuracy: data.accuracy || 0,
+            level: data.level || 'beginner'
+          };
+        });
+        setWorkoutHistory(history);
+        
+        // Also save to localStorage as backup
+        localStorage.setItem('workoutHistory', JSON.stringify(history));
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error loading workout history:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isAuthenticated, user?.uid]);
+
+  // Reset workout history when user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
+      console.log('=== USER LOGGED OUT - RESETTING WORKOUT HISTORY ===');
+      setWorkoutHistory([]);
+      localStorage.removeItem('workoutHistory');
+    }
+  }, [isAuthenticated]);
+
+  // track last feedback time
+  const lastFeedbackAtRef = useRef(0);
+
+  // Use refs to store latest values without triggering recreations
   const currentExerciseRef = useRef(currentExercise);
   const startTimeRef = useRef(startTime);
   const repCountsRef = useRef(repCounts);
   const caloriesRef = useRef(calories);
   const poseAccuracyRef = useRef(poseAccuracy);
   const levelRef = useRef(level);
+  const userRef = useRef(user);
 
-  // Keep refs in sync
+  // Keep refs in sync with state
   React.useEffect(() => {
     currentExerciseRef.current = currentExercise;
     startTimeRef.current = startTime;
@@ -78,76 +139,36 @@ export const WorkoutProvider = ({ children }) => {
     caloriesRef.current = calories;
     poseAccuracyRef.current = poseAccuracy;
     levelRef.current = level;
-  }, [currentExercise, startTime, repCounts, calories, poseAccuracy, level]);
+    userRef.current = user;
+  }, [currentExercise, startTime, repCounts, calories, poseAccuracy, level, user]);
 
-  // Load workout history from Firestore
-  React.useEffect(() => {
-    if (isAuthenticated && user) {
-      loadWorkoutHistory();
-    } else {
-      setWorkoutHistory([]);
-      setLoading(false);
-    }
-  }, [isAuthenticated, user]);
-
-  const loadWorkoutHistory = async () => {
-    try {
-      const workoutsRef = collection(db, 'workouts');
-      const q = query(
-        workoutsRef,
-        where('userId', '==', user.uid),
-        orderBy('workoutDate', 'desc'),
-        limit(10)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      const history = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        history.push({
-          id: doc.id,
-          exercise: data.exercise,
-          date: data.workoutDate.toDate ? data.workoutDate.toDate().toISOString() : data.workoutDate,
-          duration: data.durationMs,
-          reps: data.reps,
-          calories: data.calories,
-          accuracy: data.accuracy,
-          level: data.level
-        });
-      });
-
-      setWorkoutHistory(history);
-    } catch (error) {
-      console.error('Error loading workout history:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Helper function to map exercise name to repCounts key
   const mapExerciseKey = (ex) => {
     if (!ex) return 'squat';
     if (ex === 'bicep-curl') return 'bicepCurl';
     if (ex === 'front-kick') return 'frontKick';
     if (ex === 'overhead-press') return 'overheadPress';
     if (ex === 'lateral-raise') return 'lateralRaise';
-    return ex;
+    return ex; // 'squat' and 'crunch' stay as is
   };
 
   const startSession = useCallback((exercise, selectedLevel) => {
     console.log('startSession called with:', { exercise, selectedLevel });
     const normalizedLevel = (selectedLevel || 'beginner').toLowerCase();
     const normalizedExercise = (exercise || 'squat').toLowerCase();
-
+    console.log('Normalized values:', { normalizedExercise, normalizedLevel });
+    
     if (!normalizedExercise || normalizedExercise === 'null') {
       console.error('Invalid exercise provided to startSession');
       return;
     }
-
+    
+    console.log('Setting currentExercise to:', normalizedExercise);
     setCurrentExercise(normalizedExercise);
     setLevel(normalizedLevel);
     setDuration(levelToDurationMinutes[normalizedLevel] || 0);
     setIsActive(true);
+    // set start time after countdown
     setStartTime(null);
     setReps(0);
     setCalories(0);
@@ -157,52 +178,87 @@ export const WorkoutProvider = ({ children }) => {
   }, []);
 
   const endSession = useCallback(async () => {
+    // Save workout data to history before clearing session
+    // Use refs to get latest values without causing recreations
     const exercise = currentExerciseRef.current;
     const start = startTimeRef.current;
     const counts = repCountsRef.current;
     const cals = caloriesRef.current;
     const accuracy = poseAccuracyRef.current;
     const lvl = levelRef.current;
+    const currentUser = userRef.current;
 
-    if (exercise && start && isAuthenticated && user) {
+    if (exercise && start && currentUser?.isAuthenticated && currentUser?.uid) {
       const durationMs = Date.now() - start;
       const workoutData = {
-        userId: user.uid,
         exercise: exercise.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        workoutDate: serverTimestamp(),
-        durationMs: durationMs,
+        date: new Date().toISOString(),
+        duration: durationMs,
         reps: counts[mapExerciseKey(exercise)] || 0,
         calories: cals,
         accuracy: accuracy,
-        level: lvl,
-        createdAt: serverTimestamp()
+        level: lvl
       };
 
-      try {
-        // Save to Firestore
-        await addDoc(collection(db, 'workouts'), workoutData);
+      // Update local state immediately
+      setWorkoutHistory(prev => {
+        const newHistory = [workoutData, ...prev].slice(0, 10); // Keep last 10 workouts
+        // Save to localStorage as backup
+          localStorage.setItem('workoutHistory', JSON.stringify(newHistory));
+        return newHistory;
+      });
 
-        // Reload history
-        await loadWorkoutHistory();
+      // Save to Firestore
+      try {
+        await addDoc(collection(db, 'workouts'), {
+          userId: currentUser.uid,
+          exercise: workoutData.exercise,
+          workoutDate: serverTimestamp(),
+          durationMs: workoutData.duration,
+          reps: workoutData.reps,
+          calories: workoutData.calories,
+          accuracy: workoutData.accuracy,
+          level: workoutData.level,
+          createdAt: serverTimestamp()
+        });
       } catch (error) {
-        console.error('Error saving workout:', error);
+        console.error('Error saving workout to Firestore:', error);
+        // Workout is already saved to localStorage, so we continue
       }
+    } else if (exercise && start) {
+      // Save to localStorage only if not authenticated
+      const workoutData = {
+        exercise: exercise.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        date: new Date().toISOString(),
+        duration: Date.now() - start,
+        reps: counts[mapExerciseKey(exercise)] || 0,
+        calories: cals,
+        accuracy: accuracy,
+        level: lvl
+      };
+      setWorkoutHistory(prev => {
+        const newHistory = [workoutData, ...prev].slice(0, 10);
+        localStorage.setItem('workoutHistory', JSON.stringify(newHistory));
+        return newHistory;
+      });
     }
 
     setIsActive(false);
+    // clear calorie interval when session ends
     if (calorieTimerRef.current) {
       clearInterval(calorieTimerRef.current);
       calorieTimerRef.current = null;
     }
-  }, [isAuthenticated, user]);
+  }, []);
 
   const startTimer = useCallback(() => {
     setStartTime(Date.now());
+    // clear any existing calorie timer before starting
     if (calorieTimerRef.current) {
       clearInterval(calorieTimerRef.current);
       calorieTimerRef.current = null;
     }
-
+    // start calorie counter based on current exercise (use ref)
     const exercise = currentExerciseRef.current;
     if (exercise && SECONDS_PER_CALORIE[exercise]) {
       const intervalSeconds = SECONDS_PER_CALORIE[exercise];
@@ -212,6 +268,7 @@ export const WorkoutProvider = ({ children }) => {
     }
   }, []);
 
+  // clear timers on unmount
   React.useEffect(() => {
     return () => {
       if (calorieTimerRef.current) {
@@ -223,30 +280,33 @@ export const WorkoutProvider = ({ children }) => {
 
   const addFeedback = useCallback((message, type = 'success') => {
     const now = Date.now();
-
+    
     setFeedbackMessages(prev => {
+      // Check if this exact message was just added (prevent duplicates only)
       if (prev.length > 0 && prev[0].message === message && (now - prev[0].timestamp < 1000)) {
         return prev;
       }
-
+      
       const next = [{ message, type, id: `${now}-${Math.random().toString(36).slice(2)}`, timestamp: now }, ...prev];
       return next.slice(0, 3);
     });
 
+    // Update feedback counts and calculate accuracy
     setFeedbackCounts(prev => {
       const isPositive = type === 'success' || type === 'info';
       const isNegative = type === 'error';
-
+      
       const newCounts = {
         positive: isPositive ? prev.positive + 1 : prev.positive,
         negative: isNegative ? prev.negative + 1 : prev.negative
       };
-
+      
+      // Calculate weighted accuracy: positive weight 1.0, negative weight 0.3
       const totalWeighted = (newCounts.positive * 1.0) + (newCounts.negative * 0.3);
       const accuracy = totalWeighted > 0 ? Math.round((newCounts.positive * 1.0) / totalWeighted * 100) : 0;
-
+      
       setPoseAccuracy(accuracy);
-
+      
       return newCounts;
     });
   }, []);
@@ -258,6 +318,7 @@ export const WorkoutProvider = ({ children }) => {
   }, []);
 
   const value = useMemo(() => ({
+    // expose state
     currentExercise,
     level,
     duration,
@@ -270,23 +331,22 @@ export const WorkoutProvider = ({ children }) => {
     repCounts,
     feedbackCounts,
     workoutHistory,
-    loading,
     lastWorkout: workoutHistory.length > 0 ? workoutHistory[0] : null,
+    loading,
+
+    // expose actions
     startSession,
     endSession,
     addFeedback,
     clearFeedback,
     updateRepCount,
     startTimer,
+
+    // expose setters
     setReps,
     setCalories,
     setPoseAccuracy,
-  }), [
-    currentExercise, level, duration, isActive, startTime, reps, calories,
-    poseAccuracy, feedbackMessages, repCounts, feedbackCounts, workoutHistory,
-    loading, startSession, endSession, addFeedback, clearFeedback,
-    updateRepCount, startTimer
-  ]);
+  }), [currentExercise, level, duration, isActive, startTime, reps, calories, poseAccuracy, feedbackMessages, repCounts, feedbackCounts, workoutHistory, loading, startSession, endSession, addFeedback, clearFeedback, updateRepCount, startTimer]);
 
   return (
     <WorkoutContext.Provider value={value}>

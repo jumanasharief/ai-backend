@@ -1,19 +1,13 @@
-import { useUser } from '../../context/UserContext';
-import SignIn from './SignIn';
 import HomeDashboard from './HomeDashboard';
 
+/**
+ * HomePage Component
+ * Displays the authenticated user's home dashboard
+ * This component is protected by ProtectedRoute in App.jsx
+ * so it will only be accessible to authenticated users
+ */
 function HomePage() {
-  const { user, isAuthenticated, loading } = useUser();
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  if (isAuthenticated && user) {
-    return <HomeDashboard />;
-  }
-
-  return <SignIn />;
+  return <HomeDashboard />;
 }
 
 export default HomePage;

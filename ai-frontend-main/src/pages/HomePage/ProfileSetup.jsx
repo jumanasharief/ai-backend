@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../../context/UserContext';
+import { useToast } from '../../context/ToastContext';
 
 /**
  * ProfileSetup Component
@@ -15,7 +16,8 @@ import { useUser } from '../../context/UserContext';
  */
 const ProfileSetup = () => {
   const navigate = useNavigate();
-  const { user, updateUser } = useUser();
+  const { user, updateUser, loading } = useUser();
+  const { showSuccess, showError } = useToast();
   
   // Form state management
   const [formData, setFormData] = useState({
@@ -31,12 +33,19 @@ const ProfileSetup = () => {
   // Loading state for form submission
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Check if user exists and has email (should come from SignUp)
+  // Check if user has email or uid (should come from SignUp)
   useEffect(() => {
-    if (!user?.email) {
+    // Wait for auth state to load
+    if (loading) {
+      return;
+    }
+    
+    // If no user or no email/uid, redirect to signup
+    if (!user || (!user.email && !user.uid)) {
+      console.log('No user found, redirecting to signup');
       navigate('/signup');
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
 
   // Calculate age from birthdate
   const calculateAge = (birthdate) => {
@@ -86,6 +95,7 @@ const ProfileSetup = () => {
     // Validate file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
     if (!validTypes.includes(file.type)) {
+      showError('Please upload a valid image file (JPG, PNG, or GIF)');
       setErrors(prev => ({
         ...prev,
         profilePicture: 'Please upload a valid image file (JPG, PNG, or GIF)'
@@ -96,6 +106,7 @@ const ProfileSetup = () => {
     // Validate file size (5MB max)
     const maxSize = 5 * 1024 * 1024; // 5MB in bytes
     if (file.size > maxSize) {
+      showError('File size must be less than 5MB');
       setErrors(prev => ({
         ...prev,
         profilePicture: 'File size must be less than 5MB'
@@ -182,12 +193,12 @@ const ProfileSetup = () => {
       updateUser(completeUserData);
       
       // Show success message and navigate
-      alert('Profile complete! Let\'s set your fitness goals.');
+      showSuccess('Profile complete! Let\'s set your fitness goals.');
       navigate('/goals');
       
     } catch (error) {
       console.error('Profile setup error:', error);
-      alert('An error occurred. Please try again.');
+      showError('An error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -195,6 +206,22 @@ const ProfileSetup = () => {
 
   // Get today's date for max date validation
   const today = new Date().toISOString().split('T')[0];
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="goals-container">
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no user, don't render form (redirect will happen)
+  if (!user || (!user.email && !user.uid)) {
+    return null;
+  }
 
   return (
     <div className="goals-container">

@@ -5,7 +5,6 @@ export class ExerciseDetector {
     this.addFeedback = addFeedback;
     this.currentExercise = null;
     
-    // track frame stability per exercise
     this.frameCounts = {
       squat: { stage: 'standing', prevStage: 'standing', count: 0, stableFrames: 0 },
       bicepCurl: { stage: 'extended', prevStage: 'extended', count: 0, stableFrames: 0 },
@@ -15,18 +14,16 @@ export class ExerciseDetector {
       crunch: { stage: 'start', prevStage: 'start', count: 0, stableFrames: 0 }
     };
     
-    // track rep state per exercise
     this.repState = {
-      squat: 'standing',        // 'standing' | 'reached_depth'
-      bicepCurl: 'extended',    // 'extended' | 'contracted'
-      frontKick: 'in',          // 'in' | 'ready' | 'out'
-      overheadPress: 'start',   // 'start' | 'pressing'
-      lateralRaise: 'down',     // 'down' | 'raised'
-      crunch: 'start'           // 'start' | 'crunching'
+      squat: 'standing',
+      bicepCurl: 'extended',
+      frontKick: 'in',
+      overheadPress: 'start',
+      lateralRaise: 'down',
+      crunch: 'start'
     };
     this.repStable = { squat: 0, bicepCurl: 0, frontKick: 0, overheadPress: 0, lateralRaise: 0, crunch: 0 };
 
-    // track midway sound per rep (prevent spam)
     this.midwayFlags = {
       squat: false,
       bicepCurl: false,
@@ -36,26 +33,21 @@ export class ExerciseDetector {
       crunch: false
     };
 
-    // track current kick side for proper leg switching
     this.currentKickSide = null;
 
-    // store smoothed angles and errors
     this.smoothAngles = Object.create(null);
     this.errorStable = Object.create(null);
     this.formErrorFrames = Object.create(null);
     
-    // throttle feedback by type
     this.lastFeedback = {
-      rep: 0,        // Rep completion - no throttle
-      form: 0,       // Form corrections - 2s throttle
-      encourage: 0   // Encouragement - 1.5s throttle
+      rep: 0,
+      form: 0,
+      encourage: 0
     };
     
-    // set required stable frames
     this.STABLE_FRAMES = 3;
-    this.FK_STABLE_FRAMES = 2; // faster transitions for ballistic kicks
+    this.FK_STABLE_FRAMES = 2;
 
-    // sound feedback manager
     this.sound = new SoundFeedback();
   }
 
@@ -74,7 +66,6 @@ export class ExerciseDetector {
       state.count = 0;
       state.stableFrames = 0;
     }
-    // reset rep state machine
     if (exercise === 'squat') {
       this.repState.squat = 'standing';
       this.repStable.squat = 0;
@@ -102,7 +93,6 @@ export class ExerciseDetector {
       this.midwayFlags.crunch = false;
     }
 
-    // reset sound state for this exercise
     if (this.sound) this.sound.resetExercise(exercise);
   }
 
@@ -110,20 +100,16 @@ export class ExerciseDetector {
     return this.frameCounts[exercise]?.count || 0;
   }
 
-  // check if enough time has passed for this feedback type
   canGiveFeedback(type) {
     const now = Date.now();
     const cooldowns = { rep: 0, form: 2000, encourage: 800 };
     return (now - this.lastFeedback[type]) >= cooldowns[type];
   }
 
-  // mark feedback as given
   markFeedbackGiven(type) {
     this.lastFeedback[type] = Date.now();
   }
 
-  // check if form error has persisted for 5 consecutive frames before showing feedback
-  // prevents flashing messages for quick corrections (~160ms at 30fps)
   isFormErrorStable(errorKey, hasError) {
     if (!this.formErrorFrames[errorKey]) {
       this.formErrorFrames[errorKey] = 0;
@@ -138,7 +124,6 @@ export class ExerciseDetector {
     }
   }
 
-  // calculate angle between three points
   calculateAngle(a, b, c) {
     const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
     let angle = Math.abs((radians * 180.0) / Math.PI);
@@ -146,35 +131,24 @@ export class ExerciseDetector {
     return angle;
   }
 
-  // calculate torso angle (shoulder-hip vs vertical)
   calculateTorsoAngle(shoulder, hip) {
-    // Calculate the angle between shoulder-hip line and vertical (0° = perfectly upright)
     const dx = shoulder.x - hip.x;
     const dy = shoulder.y - hip.y;
     const angle = Math.abs(Math.atan2(dx, dy) * 180.0 / Math.PI);
     return angle;
   }
 
-  // calculate torso angle relative to floor (horizontal)
-  // Returns angle in degrees: 0° = flat on floor, increases as torso lifts
   calculateTorsoAngleToFloor(shoulder, hip) {
-    // Calculate the angle between shoulder-hip line and horizontal (floor)
-    // When lying flat: shoulder.y ≈ hip.y, angle ≈ 0°
-    // When crunching up: shoulder.y < hip.y, angle increases
     const dx = shoulder.x - hip.x;
-    const dy = hip.y - shoulder.y; // Inverted for floor reference
+    const dy = hip.y - shoulder.y;
     const angle = Math.abs(Math.atan2(dy, dx) * 180.0 / Math.PI);
     return angle;
   }
 
-  // calculate neck alignment angle at shoulder (between head-shoulder and hip-shoulder lines)
-  // Returns angle in degrees: ≥165° = neutral/straight neck
   calculateNeckAlignmentAngle(head, shoulder, hip) {
-    // Angle at shoulder between head-shoulder line and hip-shoulder line
     return this.calculateAngle(head, shoulder, hip);
   }
 
-  // smooth angle values exponentially
   smooth(name, value, alpha = 0.5) {
     const prev = this.smoothAngles[name];
     const next = prev == null ? value : (alpha * prev + (1 - alpha) * value);
@@ -186,7 +160,6 @@ export class ExerciseDetector {
     return exercise === 'frontKick' ? 1 : this.STABLE_FRAMES;
   }
 
-  // choose better visible side (left/right)
   pickSide(landmarks) {
     const getVis = (idx) => {
       const p = landmarks[idx];
@@ -197,26 +170,21 @@ export class ExerciseDetector {
     return rightSum >= leftSum ? 'right' : 'left';
   }
 
-  // dev helper: no-op in production
   testDetection() {}
 
-  // update frame stability and return if state changed
   updateStability(exercise, newStage) {
     const state = this.frameCounts[exercise];
     if (state.stage !== newStage) {
-      // Stage changed - update previous stage and reset stability
       state.prevStage = state.stage;
       state.stage = newStage;
       state.stableFrames = 1;
-      return false; // Not stable yet
+      return false;
     } else {
-      // Same stage - increment stability counter
       state.stableFrames++;
       return state.stableFrames >= this.STABLE_FRAMES;
     }
   }
 
-  // detect squat
   detectSquat(landmarks) {
     const side = this.pickSide(landmarks);
     const idx = side === 'right' ? { shoulder: 12, hip: 24, knee: 26, ankle: 28 } : { shoulder: 11, hip: 23, knee: 25, ankle: 27 };
@@ -227,62 +195,49 @@ export class ExerciseDetector {
 
     if (!hip || !knee || !ankle || !shoulder) return;
 
-    // require core joints visible
     const visCore = [hip, knee, ankle, shoulder].every(p => (p && (p.visibility == null || p.visibility >= 0.5)));
     if (!visCore) return;
 
     const kneeAngleRaw = this.calculateAngle(hip, knee, ankle);
-    // measure torso lean (shoulder-hip vs vertical)
     const torsoAngleRaw = this.calculateTorsoAngle(shoulder, hip);
     const hipAngleRaw = this.calculateAngle(shoulder, hip, knee);
 
-    // smooth angles to reduce jitter (reduced alpha since landmarks are pre-smoothed)
     const kneeAngle = this.smooth('squat.knee', kneeAngleRaw, 0.4);
     const torsoAngle = this.smooth('squat.torso', torsoAngleRaw, 0.4);
     const hipAngle = this.smooth('squat.hip', hipAngleRaw, 0.4);
-    const ankleRef = landmarks[32] || { x: ankle.x + 0.001, y: ankle.y }; // avoid NaN
+    const ankleRef = landmarks[32] || { x: ankle.x + 0.001, y: ankle.y };
     const ankleAngleRaw = this.calculateAngle(knee, ankle, ankleRef);
     const ankleAngle = this.smooth('squat.ankle', ankleAngleRaw, 0.4);
-
-    // remove debug logs
     
     let newStage;
     
-    // set thresholds for front view projection
-    if (kneeAngle > 150) {      // was 160
+    if (kneeAngle > 150) {
       newStage = 'standing';
-    } else if (kneeAngle > 135) { // was 120 - KEY CHANGE for front view
+    } else if (kneeAngle > 135) {
       newStage = 'descending';
-    } else if (kneeAngle > 115) { // was 90 - much more lenient
+    } else if (kneeAngle > 115) {
       newStage = 'halfway';
-    } else if (kneeAngle > 100) { // was 80 - much more lenient
+    } else if (kneeAngle > 100) {
       newStage = 'deep';
-    } else {  // <= 100 - much more lenient
+    } else {
       newStage = 'bottom';
     }
 
-    // fallback: use hip drop when knee angle seems unreliable
     if (kneeAngle > 120 && newStage === 'descending') {
-      // Initialize calibration if needed
       if (!this.calibration) {
         this.calibration = { squat: { standingHipY: null } };
       }
       
-      // Calibrate standing hip position when standing
       if (kneeAngle > 150 && !this.calibration.squat.standingHipY) {
         this.calibration.squat.standingHipY = hip.y;
       }
       
-      // Use hip drop if we have calibration
       if (this.calibration.squat.standingHipY) {
         const standingHipY = this.calibration.squat.standingHipY;
         const hipDrop = Math.abs(hip.y - standingHipY);
         const torsoLength = Math.abs(shoulder.y - hip.y);
         const normalizedDrop = torsoLength > 0 ? hipDrop / torsoLength : 0;
         
-        // remove debug logs
-        
-        // Override stage based on hip drop
         if (normalizedDrop < 0.05) {
           newStage = 'standing';
         } else if (normalizedDrop < 0.15) {
@@ -297,16 +252,11 @@ export class ExerciseDetector {
       }
     }
 
-    // remove debug logs
-
-    // Check if state is stable
     if (!this.updateStability('squat', newStage)) return;
 
     const state = this.frameCounts.squat;
 
-    // count reps when reaching depth then returning to standing
     if (this.repState.squat === 'standing') {
-      // User reached at least halfway depth - mark as reached (more lenient for front view)
       if (newStage === 'halfway' || newStage === 'deep' || newStage === 'bottom') {
         this.repState.squat = 'reached_depth';
       }
@@ -799,21 +749,44 @@ detectOverheadPress(landmarks) {
       this.midwayFlags.lateralRaise = true; // Set flag to prevent repeated midway sounds
     }
 
-    // form corrections: check for bent elbows
+    // form corrections: check for bent elbows and arms raised too high
     // Use average elbow angle to prevent false positives from natural asymmetry
     const avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
     
-    // Check for bent elbows (should be nearly straight: 145-175° is good form)
-    // Only check when arms are fully raised to avoid false positives during transitions
-    const hasBentElbows = avgElbowAngle < 145 && newStage === 'raised';
-    // Require error to persist for 5 frames (~160ms) before showing feedback to prevent smoothing lag false positives
-    const bentElbowsStable = this.isFormErrorStable('lateralRaise.bentElbows', hasBentElbows);
-    if (bentElbowsStable && this.canGiveFeedback('form')) {
-      this.addFeedback('Keep your elbows straight! 📐', 'error');
-      if (this.sound) this.sound.play('lateral-raise.form2', 'lateralRaise', { formError: true });
-      this.markFeedbackGiven('form');
-    } else if (!hasBentElbows) {
-      if (this.sound) this.sound.clearFormError('lateral-raise.form2', 'lateralRaise');
+    // Form checks only in raised position with sufficient shoulder elevation
+    if (newStage === 'raised' && avgShoulderAngle >= 70) {
+      // Check 1: Arms raised too high (above shoulder level)
+      // Target range is 80-95° (shoulder level), allow up to 110° for natural variation
+      const raisedTooHigh = avgShoulderAngle > 150;
+      const tooHighStable = this.isFormErrorStable('lateralRaise.tooHigh', raisedTooHigh);
+      if (tooHighStable && this.canGiveFeedback('form')) {
+        this.addFeedback('Don\'t raise arms above shoulder level! 📐', 'error');
+        if (this.sound) this.sound.play('lateral-raise.form1', 'lateralRaise', { formError: true });
+        this.markFeedbackGiven('form');
+      } else if (!raisedTooHigh) {
+        if (this.sound) this.sound.clearFormError('lateral-raise.form1', 'lateralRaise');
+      }
+
+      // Check 2: Bent elbows (more lenient threshold and higher stability)
+      const hasBentElbows = avgElbowAngle < 140;
+      const bentElbowsStable = this.isFormErrorStable('lateralRaise.bentElbows', hasBentElbows);
+      // Require 8 consecutive frames instead of 5 to reduce noise
+      if (bentElbowsStable && this.formErrorFrames['lateralRaise.bentElbows'] >= 8 && this.canGiveFeedback('form')) {
+        this.addFeedback('Keep your elbows straight! 📐', 'error');
+        if (this.sound) this.sound.play('lateral-raise.form2', 'lateralRaise', { formError: true });
+        this.markFeedbackGiven('form');
+      } else if (!hasBentElbows) {
+        if (this.sound) this.sound.clearFormError('lateral-raise.form2', 'lateralRaise');
+      }
+    } else {
+      // Clear all form errors when not in checked range
+      if (this.sound) {
+        this.sound.clearFormError('lateral-raise.form1', 'lateralRaise');
+        this.sound.clearFormError('lateral-raise.form2', 'lateralRaise');
+      }
+      // Reset error counters when not checking
+      this.formErrorFrames['lateralRaise.tooHigh'] = 0;
+      this.formErrorFrames['lateralRaise.bentElbows'] = 0;
     }
   }
 

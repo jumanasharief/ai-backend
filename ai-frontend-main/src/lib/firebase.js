@@ -1,9 +1,9 @@
 
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 
 const firebaseConfig = {
@@ -46,6 +46,29 @@ try {
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Connect to emulators in development (only if explicitly enabled via env variable)
+// Set VITE_USE_FIREBASE_EMULATORS=true to use emulators, otherwise uses production Firebase
+const useEmulators = import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
+
+if (typeof window !== 'undefined' && useEmulators && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+  try {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFirestoreEmulator(db, '127.0.0.1', 8081);
+    connectStorageEmulator(storage, '127.0.0.1', 9199);
+    console.log('✅ Connected to Firebase Emulators');
+    console.log('⚠️ Data will be saved to LOCAL emulators, not production Firebase!');
+  } catch (error) {
+    // Already connected or emulators not running - that's okay
+    if (!error.message?.includes('already been initialized')) {
+      console.log('ℹ️ Emulator connection:', error.message);
+    }
+  }
+} else if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+  console.log('✅ Using PRODUCTION Firebase (emulators disabled)');
+  console.log('📦 Project ID:', firebaseConfig.projectId);
+  console.log('💡 To use emulators, set VITE_USE_FIREBASE_EMULATORS=true in .env file');
+}
 
 let analytics = null;
 if (typeof window !== 'undefined' && firebaseConfig.measurementId) {

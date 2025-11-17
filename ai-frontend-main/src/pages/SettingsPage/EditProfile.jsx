@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
 import { useUser } from '../../context/UserContext';
+import { useToast } from '../../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
 
 const EditProfile = () => {
   // Get user data and update function from context
   const { user, updateUser, logout } = useUser();
+  const { showError, showConfirm } = useToast();
   const navigate = useNavigate();
 
   // Local state for form inputs
   // Initialize with current user values
   const [formData, setFormData] = useState({
-    name: user?.name || '',
-    gender: user?.gender || '',
-    birthdate: user?.birthdate || '',
+    name: user.name,
+    gender: user.gender,
+    birthdate: user.birthdate,
   });
 
   // State for image upload preview
-  const [imagePreview, setImagePreview] = useState(user?.profilePicture || '');
+  const [imagePreview, setImagePreview] = useState(user.profilePicture);
 
   // Handle input changes
   // Updates local state as user types
@@ -35,7 +37,7 @@ const EditProfile = () => {
     if (file) {
       // Check file size (max 2MB to avoid localStorage issues)
       if (file.size > 2 * 1024 * 1024) {
-        alert('Image size should be less than 2MB');
+        showError('Image size should be less than 2MB');
         return;
       }
 
@@ -52,7 +54,7 @@ const EditProfile = () => {
   const handleSave = () => {
     // Validate inputs
     if (!formData.name.trim()) {
-      alert('Name cannot be empty');
+      showError('Name cannot be empty');
       return;
     }
 
@@ -86,10 +88,16 @@ const EditProfile = () => {
 
   // Logout handler
   const handleLogout = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      logout();
-      navigate('/');
-    }
+    showConfirm(
+      'Are you sure you want to logout?',
+      () => {
+        logout();
+        navigate('/');
+      },
+      () => {
+        // User cancelled, do nothing
+      }
+    );
   };
 
   return (
@@ -126,7 +134,7 @@ const EditProfile = () => {
               color: 'white',
               fontSize: '60px',
               fontWeight: 'bold'
-            }}>{(formData.name || 'U').charAt(0)}</span>
+            }}>{formData.name.charAt(0)}</span>
           </div>
         )}
         

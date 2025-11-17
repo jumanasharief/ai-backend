@@ -1,11 +1,20 @@
 import { useWorkout } from '../../../context/WorkoutContext';
+import { useToast } from '../../../context/ToastContext';
 
 function EndSessionButton({ onEnd }) {
   const { isActive } = useWorkout();
+  const { showConfirm } = useToast();
 
   const handleClick = () => {
-    const ok = window.confirm('Are you sure? Your progress will be saved.');
-    if (ok) onEnd();
+    showConfirm(
+      'Are you sure? Your progress will be saved.',
+      () => {
+        onEnd();
+      },
+      () => {
+        // User cancelled, do nothing
+      }
+    );
   };
 
   return (

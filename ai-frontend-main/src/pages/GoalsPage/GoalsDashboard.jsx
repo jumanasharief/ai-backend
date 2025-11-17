@@ -117,7 +117,6 @@ function GoalsDashboard() {
         </div>
         
         <div className="progress-display">
-          <span className="progress-badge">{currentWeight} kg</span>
           <div className="progress-bar">
             <div 
               className="progress-fill" 

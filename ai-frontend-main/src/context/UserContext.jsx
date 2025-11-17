@@ -1,217 +1,239 @@
 import { createContext, useState, useEffect, useContext } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
-  updateProfile as updateAuthProfile
-} from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp
-} from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 const UserContext = createContext();
 
 export const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Listen to auth state changes
+  // Listen to Firebase Auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
+      setLoading(true);
       
       if (firebaseUser) {
-        // Load user profile from Firestore
-        await loadProfile(firebaseUser.uid);
+        try {
+          // Fetch user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const userData = userDoc.exists() ? userDoc.data() : null;
+          
+          // Merge Firebase Auth user with Firestore data
+          const mergedUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: userData?.name || firebaseUser.displayName || '',
+            gender: userData?.gender || '',
+            birthdate: userData?.birthdate || '',
+            age: userData?.age || null,
+            profilePicture: userData?.profilePicture || userData?.profilePictureUrl || null,
+            hasCompletedOnboarding: userData?.hasCompletedOnboarding || false,
+            isAuthenticated: true,
+            ...userData
+          };
+          
+          setUser(mergedUser);
+          setIsAuthenticated(true);
+          
+          // Sync to localStorage as backup
+          localStorage.setItem('userData', JSON.stringify(mergedUser));
+        } catch (error) {
+          console.error('Error loading user data:', error);
+          // Fallback to basic user data
+          const basicUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: firebaseUser.displayName || '',
+            isAuthenticated: true
+          };
+          setUser(basicUser);
+          setIsAuthenticated(true);
+          localStorage.setItem('userData', JSON.stringify(basicUser));
+        }
       } else {
-        setProfile(null);
-        setLoading(false);
+        // User is signed out - try to load from localStorage first
+        const savedUser = localStorage.getItem('userData');
+        if (savedUser) {
+          try {
+            const parsedUser = JSON.parse(savedUser);
+            if (parsedUser.isAuthenticated) {
+              setUser(parsedUser);
+              setIsAuthenticated(true);
+            } else {
+              setUser(null);
+              setIsAuthenticated(false);
+              localStorage.removeItem('userData');
+            }
+          } catch (error) {
+            setUser(null);
+            setIsAuthenticated(false);
+            localStorage.removeItem('userData');
+          }
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
       }
+      
+      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Load user profile from Firestore
-  const loadProfile = async (userId) => {
+  // Sign up function
+  const signUp = async (email, password) => {
     try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
+      const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, password);
       
-      if (userDoc.exists()) {
-        setProfile(userDoc.data());
-      } else {
-        // Create initial profile if doesn't exist
-        const initialProfile = {
-          email: auth.currentUser?.email || '',
-          name: auth.currentUser?.displayName || '',
-          gender: '',
-          birthdate: '',
-          age: null,
-          profilePictureUrl: auth.currentUser?.photoURL || null,
-          hasCompletedOnboarding: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-        
-        await setDoc(doc(db, 'users', userId), initialProfile);
-        setProfile(initialProfile);
-      }
-    } catch (error) {
-      console.error('Error loading profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Sign up with email and password
-  const signUp = async (email, password, userData = {}) => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', user.uid), {
-        email: email,
-        name: userData.name || '',
-        gender: userData.gender || '',
-        birthdate: userData.birthdate || '',
-        age: userData.age || null,
-        profilePictureUrl: null,
+      // Create user document in Firestore
+      await setDoc(doc(db, 'users', firebaseUser.uid), {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        name: '',
         hasCompletedOnboarding: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
 
-      // Update display name if provided
-      if (userData.name) {
-        await updateAuthProfile(user, { displayName: userData.name });
-      }
-
-      return { user, error: null };
+      return { user: firebaseUser, error: null };
     } catch (error) {
-      console.error('Error signing up:', error);
+      console.error('Sign up error:', error);
       return { user: null, error };
     }
   };
 
-  // Sign in with email and password
+  // Sign in function
   const signIn = async (email, password) => {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      return { user: userCredential.user, error: null };
+      const { user: firebaseUser } = await signInWithEmailAndPassword(auth, email, password);
+      return { user: firebaseUser, error: null };
     } catch (error) {
-      console.error('Error signing in:', error);
+      console.error('Sign in error:', error);
       return { user: null, error };
     }
   };
 
-  // Sign in with Google
-  const signInWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-
-      // Check if profile exists, if not create it
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          email: user.email,
-          name: user.displayName || '',
-          gender: '',
-          birthdate: '',
-          age: null,
-          profilePictureUrl: user.photoURL || null,
-          hasCompletedOnboarding: false,
-          createdAt: serverTimestamp(),
+  // Function to update user data (used in ProfileSetup and EditProfile)
+  const updateUser = async (userData) => {
+    // If Firebase user exists, update Firestore
+    if (auth.currentUser) {
+      try {
+        const uid = auth.currentUser.uid;
+        
+        // Update Firestore
+        await setDoc(doc(db, 'users', uid), {
+          ...userData,
           updatedAt: serverTimestamp()
-        });
-      }
+        }, { merge: true });
 
-      return { user, error: null };
-    } catch (error) {
-      console.error('Error signing in with Google:', error);
-      return { user: null, error };
+        // Update local state
+        setUser(prevUser => ({
+          ...prevUser,
+          ...userData,
+          isAuthenticated: true
+        }));
+
+        // Sync to localStorage
+        const updatedUser = { ...user, ...userData, isAuthenticated: true };
+        localStorage.setItem('userData', JSON.stringify(updatedUser));
+      } catch (error) {
+        console.error('Error updating user:', error);
+        // Fallback to local state update only
+        setUser(prevUser => ({
+          ...prevUser,
+          ...userData,
+          isAuthenticated: true
+        }));
+        const updatedUser = { ...user, ...userData, isAuthenticated: true };
+        localStorage.setItem('userData', JSON.stringify(updatedUser));
+      }
+    } else {
+      // No Firebase user, just update local state (for backward compatibility)
+      setUser(prevUser => ({
+        ...prevUser,
+        ...userData,
+        isAuthenticated: true
+      }));
+      localStorage.setItem('userData', JSON.stringify({ ...user, ...userData, isAuthenticated: true }));
     }
   };
 
-  // Sign out
+  // Function to mark onboarding as complete
+  const markOnboardingComplete = async () => {
+    if (auth.currentUser) {
+      try {
+        const uid = auth.currentUser.uid;
+        await setDoc(doc(db, 'users', uid), {
+          hasCompletedOnboarding: true,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        setUser(prevUser => ({
+          ...prevUser,
+          hasCompletedOnboarding: true
+        }));
+
+        // Sync to localStorage
+        const updatedUser = { ...user, hasCompletedOnboarding: true };
+        localStorage.setItem('userData', JSON.stringify(updatedUser));
+      } catch (error) {
+        console.error('Error marking onboarding complete:', error);
+        // Fallback to local state only
+        setUser(prevUser => ({
+          ...prevUser,
+          hasCompletedOnboarding: true
+        }));
+        localStorage.setItem('userData', JSON.stringify({ ...user, hasCompletedOnboarding: true }));
+      }
+    } else {
+      // No Firebase user, just update local state
+      setUser(prevUser => ({
+        ...prevUser,
+        hasCompletedOnboarding: true
+      }));
+      localStorage.setItem('userData', JSON.stringify({ ...user, hasCompletedOnboarding: true }));
+    }
+  };
+
+  // Function to logout (clear data)
   const logout = async () => {
     try {
-      await signOut(auth);
-      setProfile(null);
-      setUser(null);
-    } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
-    }
-  };
-
-  // Update user profile
-  const updateUser = async (userData) => {
-    if (!user) {
-      throw new Error('No user logged in');
-    }
-
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        ...userData,
-        updatedAt: serverTimestamp()
-      });
-
-      // Update local state
-      setProfile(prev => ({
-        ...prev,
-        ...userData
-      }));
-
-      // Update auth profile if name changed
-      if (userData.name) {
-        await updateAuthProfile(user, { displayName: userData.name });
+      if (auth.currentUser) {
+        await signOut(auth);
       }
-
-      return { error: null };
     } catch (error) {
-      console.error('Error updating profile:', error);
-      return { error };
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      setIsAuthenticated(false);
+      localStorage.removeItem('userData');
+      localStorage.removeItem('goalsData');
+      localStorage.removeItem('workoutHistory');
     }
-  };
-
-  // Mark onboarding as complete
-  const markOnboardingComplete = async () => {
-    return await updateUser({ hasCompletedOnboarding: true });
-  };
-
-  const value = {
-    user,
-    profile,
-    loading,
-    isAuthenticated: !!user,
-    signUp,
-    signIn,
-    signInWithGoogle,
-    logout,
-    updateUser,
-    markOnboardingComplete
   };
 
   return (
-    <UserContext.Provider value={value}>
+    <UserContext.Provider value={{ 
+      user, 
+      updateUser, 
+      logout, 
+      markOnboardingComplete,
+      signUp,
+      signIn,
+      loading,
+      isAuthenticated
+    }}>
       {children}
     </UserContext.Provider>
   );
 };
 
+// Custom hook for easy access
 export const useUser = () => {
   const context = useContext(UserContext);
   if (!context) {

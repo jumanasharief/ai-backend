@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useUser } from '../../context/UserContext';
+import { useToast } from '../../context/ToastContext';
+import stockImage from '../../assets/stock-image.jpg';
+import logo from '../../assets/Logo.png';
 
 /**
  * SignUp Component
@@ -16,6 +19,7 @@ import { useUser } from '../../context/UserContext';
 const SignUp = () => {
   const navigate = useNavigate();
   const { signUp } = useUser();
+  const { showSuccess, showError } = useToast();
   
   // Form state management
   const [formData, setFormData] = useState({
@@ -103,17 +107,57 @@ const SignUp = () => {
     setIsSubmitting(true);
 
     try {
+      console.log('📝 Creating account with Firebase...');
+      
       const { user: newUser, error } = await signUp(formData.email, formData.password);
-      if (error || !newUser) {
-        throw error || new Error('Signup failed');
+      
+      if (error) {
+        console.error('❌ Signup error:', error);
+        
+        // Handle specific Firebase errors
+        switch (error.code) {
+          case 'auth/email-already-in-use':
+            showError('Email is already in use.');
+            setErrors({ email: 'Email is already in use.' });
+            break;
+          case 'auth/invalid-email':
+            showError('Invalid email address.');
+            setErrors({ email: 'Invalid email address.' });
+            break;
+          case 'auth/operation-not-allowed':
+            showError('Email/password sign up is not enabled.');
+            setErrors({ email: 'Email/password sign up is not enabled.' });
+            break;
+          case 'auth/weak-password':
+            showError('Password is too weak.');
+            setErrors({ password: 'Password is too weak.' });
+            break;
+          default:
+            showError(error.message || 'An error occurred during signup.');
+            setErrors({ email: error.message || 'An error occurred during signup.' });
+        }
+        setIsSubmitting(false);
+        return;
       }
 
-      alert('Account created! Let\'s set up your profile.');
-      navigate('/profile-setup');
+      if (!newUser) {
+        throw new Error('Failed to create account');
+      }
 
+      console.log('✅ Account created successfully:', newUser.uid);
+      
+      // Show success message and navigate
+      showSuccess('Account created! Let\'s set up your profile.');
+      
+      // Wait a moment for the auth state to update, then navigate
+      setTimeout(() => {
+        navigate('/profile-setup');
+      }, 500);
+      
     } catch (error) {
-      console.error('Signup error:', error);
-      alert('An error occurred. Please try again.');
+      console.error('❌ Unexpected error:', error);
+      showError('An unexpected error occurred. Please try again.');
+      setErrors({ email: 'An unexpected error occurred. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -128,11 +172,50 @@ const SignUp = () => {
                      validatePasswordMatch(formData.password, formData.confirmPassword);
 
   return (
-    <div className="goals-container">
-      <h2>Create Account</h2>
-      <p>Join us to start your fitness journey!</p>
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundImage: `url(${stockImage})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      paddingRight: '10%'
+    }}>
+      {/* Green transparent overlay */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(42, 115, 55, 0.45)',
+        zIndex: 1
+      }}></div>
       
-      <form onSubmit={handleSubmit} style={{ maxWidth: '400px', margin: '0 auto' }}>
+      {/* Form container */}
+      <div style={{
+        position: 'relative',
+        zIndex: 2,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        padding: '3rem',
+        borderRadius: '15px',
+        maxWidth: '450px',
+        width: '100%',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <img src={logo} alt="Logo" style={{ height: '80px', width: 'auto' }} />
+        </div>
+        <h2 style={{ fontSize: '2rem', color: '#2A7337' }}>Create Account</h2>
+        <p style={{ marginBottom: '1rem', color: '#666', fontSize: '1rem' }}>Join us to start your fitness journey!</p>
+        
+        <form onSubmit={handleSubmit} style={{ maxWidth: '100%' }}>
         {/* Email Input */}
         <div style={{ marginBottom: '1rem' }}>
           <label htmlFor="email" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
@@ -238,21 +321,22 @@ const SignUp = () => {
         </button>
       </form>
 
-      {/* Sign In Link */}
-      <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-        <p style={{ color: '#666', margin: 0 }}>
-          Already have an account?{' '}
-          <Link 
-            to="/" 
-            style={{ 
-              color: '#2A7337', 
-              textDecoration: 'none', 
-              fontWeight: '600' 
-            }}
-          >
-            Sign In
-          </Link>
-        </p>
+        {/* Sign In Link */}
+        <div style={{ textAlign: 'center'}}>
+          <p style={{ color: '#666', margin: 0 }}>
+            Already have an account?{' '}
+            <Link 
+              to="/signin" 
+              style={{ 
+                color: '#2A7337', 
+                textDecoration: 'none', 
+                fontWeight: '600' 
+              }}
+            >
+              Sign In
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

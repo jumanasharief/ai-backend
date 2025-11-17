@@ -32,18 +32,6 @@ function SetGoals({ onContinue }) {
           </div>
         </label>
         
-        <label className={`goal-option ${goal === "gain-weight" ? "selected" : ""}`}>
-          <input
-            type="radio"
-            value="gain-weight"
-            checked={goal === "gain-weight"}
-            onChange={handleGoalSelection} />
-          <div className="goal-content">
-            <h3>Gain weight</h3>
-            <p>Build muscle mass and strength</p>
-          </div>
-        </label>
-        
         <label className={`goal-option ${goal === "build-muscle" ? "selected" : ""}`}>
           <input
             type="radio"
@@ -55,7 +43,7 @@ function SetGoals({ onContinue }) {
             <p>Tone muscles and get stronger</p>
           </div>
         </label>
-
+        
         <label className={`goal-option ${goal === "maintain-weight" ? "selected" : ""}`}>
           <input
             type="radio"
@@ -64,7 +52,7 @@ function SetGoals({ onContinue }) {
             onChange={handleGoalSelection} />
           <div className="goal-content">
             <h3>Maintain weight</h3>
-            <p>Stay consistent and healthy</p>
+            <p>Stretch deeper and move better</p>
           </div>
         </label>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useUser } from '../../context/UserContext';
+import { useToast } from '../../context/ToastContext';
 
 /**
  * SignIn Component
@@ -8,13 +9,14 @@ import { useUser } from '../../context/UserContext';
  * 
  * Features:
  * - Email and password validation
- * - Checks localStorage for existing user data
+ * - Firebase authentication
  * - Loads user data into UserContext on success
- * - Navigates to goals dashboard after login
+ * - Navigates to home dashboard after login
  */
 const SignIn = () => {
   const navigate = useNavigate();
-  const { updateUser } = useUser();
+  const { signIn } = useUser();
+  const { showSuccess } = useToast();
   
   // Form state management
   const [formData, setFormData] = useState({
@@ -55,45 +57,58 @@ const SignIn = () => {
     setError('');
 
     try {
-      // TODO: Replace with API call when backend is ready
-      // Endpoint: POST /api/auth/signin
-      // Payload: { email, password }
-      // Response: { user, token }
+      console.log('🔐 Attempting login with Firebase...');
       
-      // For now: check localStorage for user data
-      const savedUserData = localStorage.getItem('userData');
+      const { user: firebaseUser, error: signInError } = await signIn(formData.email, formData.password);
       
-      if (!savedUserData) {
-        setError('No account found. Please sign up.');
+      if (signInError) {
+        console.error('❌ Login error:', signInError);
+        
+        // Handle specific Firebase errors
+        switch (signInError.code) {
+          case 'auth/user-not-found':
+            setError('Email not registered. Please sign up first.');
+            break;
+          case 'auth/wrong-password':
+            setError('Incorrect password. Please try again.');
+            break;
+          case 'auth/invalid-email':
+            setError('Invalid email address.');
+            break;
+          case 'auth/invalid-credential':
+            setError('Invalid email or password. Please check your credentials.');
+            break;
+          case 'auth/too-many-requests':
+            setError('Too many failed attempts. Please try again later.');
+            break;
+          case 'auth/network-request-failed':
+            setError('Network error. Please check your internet connection.');
+            break;
+          case 'auth/user-disabled':
+            setError('This account has been disabled.');
+            break;
+          default:
+            setError('Login error: ' + (signInError.message || 'Please try again.'));
+        }
         setIsSubmitting(false);
         return;
       }
 
-      const userData = JSON.parse(savedUserData);
-      
-      // Check if email matches (password validation would be done on backend)
-      if (userData.email !== formData.email) {
-        setError('Incorrect email or password');
-        setIsSubmitting(false);
-        return;
+      if (firebaseUser) {
+        console.log('✅ Login successful:', firebaseUser.uid);
+        
+        // Show success message
+        showSuccess('Welcome back!');
+        
+        // Wait a moment for auth state to update, then navigate
+        setTimeout(() => {
+          navigate('/home');
+        }, 500);
       }
-
-      // Load user data into context and mark as authenticated
-      updateUser({
-        ...userData,
-        isAuthenticated: true
-      });
-      
-      // Show welcome message and navigate
-      const userName = userData.name || 'User';
-      alert(`Welcome back, ${userName}!`);
-      
-      // Navigate to home page (which will show dashboard for authenticated users)
-      navigate('/');
       
     } catch (error) {
-      console.error('Sign in error:', error);
-      setError('An error occurred. Please try again.');
+      console.error('❌ Unexpected error:', error);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

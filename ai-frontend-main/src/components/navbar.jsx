@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 function Navbar() {
     return (
         <nav className="navbar-links">
-            <Link to="/">Home</Link>
+            <Link to="/home">Home</Link>
             <Link to="/goals" className="navbar-current">Goals</Link>
             <Link to="/workouts">Workout Library</Link>
             <Link to="/profile">Profile</Link>

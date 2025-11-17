@@ -24,12 +24,12 @@ function Goals() {
             currentWeight, 
             goalWeight, 
             goal, 
-            hasCompletedOnboarding: user?.hasCompletedOnboarding,
-            user 
+            hasCompletedOnboarding: user.hasCompletedOnboarding,
+            user: user 
         });
         
         // If user has completed onboarding, go directly to dashboard
-        if (user?.hasCompletedOnboarding) {
+        if (user.hasCompletedOnboarding) {
             console.log('User has completed onboarding, going to dashboard');
             setStep(3);
             setIsLoading(false);
@@ -50,7 +50,7 @@ function Goals() {
         }
         
         setIsLoading(false);
-    }, [currentWeight, goalWeight, goal, user?.hasCompletedOnboarding]);
+    }, [currentWeight, goalWeight, goal, user.hasCompletedOnboarding]);
 
     // Show loading state while checking data
     if (isLoading) {

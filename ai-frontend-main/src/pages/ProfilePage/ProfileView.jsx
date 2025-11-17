@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useUser } from '../../context/UserContext';
 import { useGoals } from '../../context/GoalsContext';
 import { useWorkout } from '../../context/WorkoutContext';
@@ -8,7 +8,7 @@ const ProfileView = () => {
   // Get user data from context
   const { user } = useUser();
   const { currentWeight, goalWeight, goal } = useGoals();
-  const { calories } = useWorkout();
+  const { calories, workoutHistory } = useWorkout();
   
   const navigate = useNavigate();
 
@@ -26,19 +26,58 @@ const ProfileView = () => {
     return age;
   };
 
-  // Mock workout stats (in a real app, this would come from workout history)
-  const workoutStats = {
-    totalWorkouts: 24,
-    totalCalories: 1840,
-    memberSince: 'Oct 2024'
-  };
+  // Calculate workout statistics from workoutHistory
+  const workoutStats = useMemo(() => {
+    if (!workoutHistory || workoutHistory.length === 0) {
+      return {
+        totalWorkouts: 0,
+        totalCalories: 0,
+        memberSince: 'Recently',
+        thisWeekWorkouts: 0,
+        avgDuration: 0
+      };
+    }
+
+    // Total workouts
+    const totalWorkouts = workoutHistory.length;
+
+    // Total calories
+    const totalCalories = workoutHistory.reduce((sum, workout) => sum + (workout.calories || 0), 0);
+
+    // Calculate workouts this week (last 7 days)
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const thisWeekWorkouts = workoutHistory.filter(workout => {
+      const workoutDate = new Date(workout.date);
+      return workoutDate >= oneWeekAgo;
+    }).length;
+
+    // Calculate average duration in minutes
+    const totalDuration = workoutHistory.reduce((sum, workout) => sum + (workout.duration || 0), 0);
+    const avgDuration = totalWorkouts > 0 ? Math.round(totalDuration / totalWorkouts / 60000) : 0; // Convert ms to minutes
+
+    // Member since - get the earliest workout date
+    const sortedByDate = [...workoutHistory].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const firstWorkout = sortedByDate[0];
+    const memberSince = firstWorkout 
+      ? new Date(firstWorkout.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      : 'Recently';
+
+    return {
+      totalWorkouts,
+      totalCalories,
+      memberSince,
+      thisWeekWorkouts,
+      avgDuration
+    };
+  }, [workoutHistory]);
 
   return (
     <div className="profile-container">
       {/* Profile Header */}
       <div className="profile-header">
         <div className="profile-picture-section">
-          {user?.profilePicture ? (
+          {user.profilePicture ? (
             <img 
               src={user.profilePicture} 
               alt="Profile" 
@@ -47,14 +86,13 @@ const ProfileView = () => {
           ) : (
             <div className="profile-picture-placeholder">
               <span className="profile-initial">
-                {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
+                {user.name ? user.name.charAt(0).toUpperCase() : '?'}
               </span>
             </div>
           )}
         </div>
         <div className="profile-info">
-          <h1 className="profile-name">{user?.name || 'User'}</h1>
-          <p className="profile-title">Fitness Enthusiast</p>
+          <h1 className="profile-name">{user.name || 'User'}</h1>
           <p className="profile-member-since">Member since {workoutStats.memberSince}</p>
         </div>
       </div>
@@ -66,11 +104,11 @@ const ProfileView = () => {
           <div className="info-grid">
             <div className="info-item">
               <span className="info-label">Email</span>
-              <span className="info-value">{user?.email || 'Not set'}</span>
+              <span className="info-value">{user.email || 'Not set'}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Age</span>
-              <span className="info-value">{user?.age ? `${user.age} years` : (user?.birthdate ? `${calculateAge(user.birthdate)} years` : 'Not set')}</span>
+              <span className="info-value">{user.age ? `${user.age} years` : (user.birthdate ? `${calculateAge(user.birthdate)} years` : 'Not set')}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Goal</span>
@@ -99,11 +137,11 @@ const ProfileView = () => {
             </div>
             <div className="info-item">
               <span className="info-label">This Week</span>
-              <span className="info-value">5 workouts</span>
+              <span className="info-value">{workoutStats.thisWeekWorkouts} {workoutStats.thisWeekWorkouts === 1 ? 'workout' : 'workouts'}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Avg Duration</span>
-              <span className="info-value">18 minutes</span>
+              <span className="info-value">{workoutStats.avgDuration} {workoutStats.avgDuration === 1 ? 'minute' : 'minutes'}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Live Calories</span>
@@ -129,12 +167,12 @@ const ProfileView = () => {
           >
             <span className="settings-text">Manage Goals</span>
           </button>
-          <button 
+          {/* <button 
             className="settings-btn"
             onClick={() => navigate('/settings')}
           >
             <span className="settings-text">Privacy</span>
-          </button>
+          </button> */}
           <button 
             className="settings-btn"
             onClick={() => navigate('/settings/logout')}
